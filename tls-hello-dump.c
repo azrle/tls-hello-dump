@@ -1,6 +1,12 @@
 /*
  * tls-hello-dump.c
  *
+ * Copyright (C) 2016 xz_wei <azrlew@gmail.com>
+ *
+ ****************************************************************************
+ *
+ * This software is a modification of:
+ *
  * TLS ClientHello/ServerHello Dumper (for XMPP).
  *
  * Version 0.5 (2013-11-06)
@@ -13,11 +19,11 @@
  * sniffex.c
  *
  * Sniffer example of TCP/IP packet capture using libpcap.
- * 
+ *
  * Version 0.1.1 (2005-07-05)
  * Copyright (c) 2005 The Tcpdump Group
  *
- * This software is intended to be used as a practical example and 
+ * This software is intended to be used as a practical example and
  * demonstration of the libpcap library; available at:
  * http://www.tcpdump.org/
  *
@@ -25,15 +31,15 @@
  *
  * This software is a modification of Tim Carstens' "sniffer.c"
  * demonstration source code, released as follows:
- * 
+ *
  * sniffer.c
  * Copyright (c) 2002 Tim Carstens
  * 2002-01-07
  * Demonstration of using libpcap
  * timcarst -at- yahoo -dot- com
- * 
+ *
  * "sniffer.c" is distributed under these terms:
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
@@ -85,7 +91,7 @@
  * TO THE QUALITY AND PERFORMANCE OF THE PROGRAM IS WITH YOU.  SHOULD THE
  * PROGRAM PROVE DEFECTIVE, YOU ASSUME THE COST OF ALL NECESSARY SERVICING,
  * REPAIR OR CORRECTION.
- * 
+ *
  * IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN WRITING
  * WILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MAY MODIFY AND/OR
  * REDISTRIBUTE THE PROGRAM AS PERMITTED ABOVE, BE LIABLE TO YOU FOR DAMAGES,
@@ -96,7 +102,7 @@
  * PROGRAMS), EVEN IF SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGES.
  * <end of "sniffex.c" terms>
- * 
+ *
  ****************************************************************************
  *
  * Below is an excerpt from an email from Guy Harris on the tcpdump-workers
@@ -104,16 +110,16 @@
  * payload?" Guy Harris' slightly snipped response (edited by him to
  * speak of the IPv4 header length and TCP data offset without referring
  * to bitfield structure members) is reproduced below:
- * 
+ *
  * The Ethernet size is always 14 bytes.
- * 
+ *
  * <snip>...</snip>
  *
- * In fact, you *MUST* assume the Ethernet header is 14 bytes, *and*, if 
- * you're using structures, you must use structures where the members 
- * always have the same size on all platforms, because the sizes of the 
- * fields in Ethernet - and IP, and TCP, and... - headers are defined by 
- * the protocol specification, not by the way a particular platform's C 
+ * In fact, you *MUST* assume the Ethernet header is 14 bytes, *and*, if
+ * you're using structures, you must use structures where the members
+ * always have the same size on all platforms, because the sizes of the
+ * fields in Ethernet - and IP, and TCP, and... - headers are defined by
+ * the protocol specification, not by the way a particular platform's C
  * compiler works.)
  *
  * The IP header size, in bytes, is the value of the IP header length,
@@ -129,15 +135,15 @@
  * If that value is less than 20 - i.e., if the value extracted with
  * "TH_OFF()" is less than 5 - you have a malformed TCP segment.
  *
- * So, to find the IP header in an Ethernet packet, look 14 bytes after 
- * the beginning of the packet data.  To find the TCP header, look 
+ * So, to find the IP header in an Ethernet packet, look 14 bytes after
+ * the beginning of the packet data.  To find the TCP header, look
  * "IP_HL(ip)*4" bytes after the beginning of the IP header.  To find the
  * TCP payload, look "TH_OFF(tcp)*4" bytes after the beginning of the TCP
  * header.
- * 
+ *
  * To find out how much payload there is:
  *
- * Take the IP *total* length field - "ip_len" in "struct sniff_ip" 
+ * Take the IP *total* length field - "ip_len" in "struct sniff_ip"
  * - and, first, check whether it's less than "IP_HL(ip)*4" (after
  * you've checked whether "IP_HL(ip)" is >= 5).  If it is, you have
  * a malformed IP datagram.
@@ -150,21 +156,21 @@
  * Otherwise, subtract "TH_OFF(tcp)*4" from it; that gives you the
  * length of the TCP payload.
  *
- * Note that you also need to make sure that you don't go past the end 
- * of the captured data in the packet - you might, for example, have a 
- * 15-byte Ethernet packet that claims to contain an IP datagram, but if 
- * it's 15 bytes, it has only one byte of Ethernet payload, which is too 
- * small for an IP header.  The length of the captured data is given in 
- * the "caplen" field in the "struct pcap_pkthdr"; it might be less than 
- * the length of the packet, if you're capturing with a snapshot length 
+ * Note that you also need to make sure that you don't go past the end
+ * of the captured data in the packet - you might, for example, have a
+ * 15-byte Ethernet packet that claims to contain an IP datagram, but if
+ * it's 15 bytes, it has only one byte of Ethernet payload, which is too
+ * small for an IP header.  The length of the captured data is given in
+ * the "caplen" field in the "struct pcap_pkthdr"; it might be less than
+ * the length of the packet, if you're capturing with a snapshot length
  * other than a value >= the maximum packet size.
  * <end of response>
- * 
+ *
  ****************************************************************************
- * 
+ *
  * Example compiler command-line for GCC:
  *   gcc -Wall -o sniffex sniffex.c -lpcap
- * 
+ *
  ****************************************************************************
  *
  * Code Comments
@@ -179,7 +185,7 @@
  * explicitly with "#define". Since some compilers might pad structures to a
  * multiple of 4 bytes - some versions of GCC for ARM may do this -
  * "sizeof (struct sniff_ethernet)" isn't used.
- * 
+ *
  * 2. Check the link-layer type of the device that's being opened to make
  * sure it's Ethernet, since that's all we handle in this example. Other
  * link-layer types may have different length headers (see [1]).
@@ -191,21 +197,21 @@
  * examples, is documented in the tcpdump man page under "expression."
  * Below are a few simple examples:
  *
- * Expression			Description
- * ----------			-----------
- * ip					Capture all IP packets.
- * tcp					Capture only TCP packets.
- * tcp port 80			Capture only TCP packets with a port equal to 80.
- * ip host 10.1.2.3		Capture all IP packets to or from host 10.1.2.3.
+ * Expression           Description
+ * ----------           -----------
+ * ip                   Capture all IP packets.
+ * tcp                  Capture only TCP packets.
+ * tcp port 80          Capture only TCP packets with a port equal to 80.
+ * ip host 10.1.2.3     Capture all IP packets to or from host 10.1.2.3.
  *
  ****************************************************************************
  *
  */
 
-#define APP_NAME		"tls-hello-dumper"
-#define APP_DESC		"TLS ClientHello/ServerHello Dumper"
-#define APP_COPYRIGHT	"Copyright (c) 2013 Georg Lukas, based on code by the Tcpdump Group."
-#define APP_DISCLAIMER	"THERE IS ABSOLUTELY NO WARRANTY FOR THIS PROGRAM."
+#define APP_NAME        "tls-hello-dumper"
+#define APP_DESC        "TLS ClientHello/ServerHello Dumper"
+#define APP_COPYRIGHT   "Copyright (c) 2013 Georg Lukas, 2016 Wei, based on code by the Tcpdump Group."
+#define APP_DISCLAIMER  "THERE IS ABSOLUTELY NO WARRANTY FOR THIS PROGRAM."
 
 #include <pcap.h>
 #include <stdio.h>
@@ -219,6 +225,8 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 
+#include "cipher_suites.h"
+
 /* default snap length (maximum bytes per packet to capture) */
 #define SNAP_LEN 1518
 
@@ -226,30 +234,30 @@
 #define SIZE_ETHERNET 14
 
 /* Ethernet addresses are 6 bytes */
-#define ETHER_ADDR_LEN	6
+#define ETHER_ADDR_LEN    6
 
 /* Ethernet header */
 struct sniff_ethernet {
-        u_char  ether_dhost[ETHER_ADDR_LEN];    /* destination host address */
-        u_char  ether_shost[ETHER_ADDR_LEN];    /* source host address */
-        u_short ether_type;                     /* IP? ARP? RARP? etc */
+    u_char  ether_dhost[ETHER_ADDR_LEN];    /* destination host address */
+    u_char  ether_shost[ETHER_ADDR_LEN];    /* source host address */
+    u_short ether_type;                     /* IP? ARP? RARP? etc */
 };
 
 /* IP header */
 struct sniff_ip {
-        u_char  ip_vhl;                 /* version << 4 | header length >> 2 */
-        u_char  ip_tos;                 /* type of service */
-        u_short ip_len;                 /* total length */
-        u_short ip_id;                  /* identification */
-        u_short ip_off;                 /* fragment offset field */
-        #define IP_RF 0x8000            /* reserved fragment flag */
-        #define IP_DF 0x4000            /* dont fragment flag */
-        #define IP_MF 0x2000            /* more fragments flag */
-        #define IP_OFFMASK 0x1fff       /* mask for fragmenting bits */
-        u_char  ip_ttl;                 /* time to live */
-        u_char  ip_p;                   /* protocol */
-        u_short ip_sum;                 /* checksum */
-        struct  in_addr ip_src,ip_dst;  /* source and dest address */
+    u_char  ip_vhl;                 /* version << 4 | header length >> 2 */
+    u_char  ip_tos;                 /* type of service */
+    u_short ip_len;                 /* total length */
+    u_short ip_id;                  /* identification */
+    u_short ip_off;                 /* fragment offset field */
+#define IP_RF 0x8000            /* reserved fragment flag */
+#define IP_DF 0x4000            /* dont fragment flag */
+#define IP_MF 0x2000            /* more fragments flag */
+#define IP_OFFMASK 0x1fff       /* mask for fragmenting bits */
+    u_char  ip_ttl;                 /* time to live */
+    u_char  ip_p;                   /* protocol */
+    u_short ip_sum;                 /* checksum */
+    struct  in_addr ip_src,ip_dst;  /* source and dest address */
 };
 #define IP_HL(ip)               (((ip)->ip_vhl) & 0x0f)
 #define IP_V(ip)                (((ip)->ip_vhl) >> 4)
@@ -258,26 +266,28 @@ struct sniff_ip {
 typedef u_int tcp_seq;
 
 struct sniff_tcp {
-        u_short th_sport;               /* source port */
-        u_short th_dport;               /* destination port */
-        tcp_seq th_seq;                 /* sequence number */
-        tcp_seq th_ack;                 /* acknowledgement number */
-        u_char  th_offx2;               /* data offset, rsvd */
+    u_short th_sport;               /* source port */
+    u_short th_dport;               /* destination port */
+    tcp_seq th_seq;                 /* sequence number */
+    tcp_seq th_ack;                 /* acknowledgement number */
+    u_char  th_offx2;               /* data offset, rsvd */
 #define TH_OFF(th)      (((th)->th_offx2 & 0xf0) >> 4)
-        u_char  th_flags;
-        #define TH_FIN  0x01
-        #define TH_SYN  0x02
-        #define TH_RST  0x04
-        #define TH_PUSH 0x08
-        #define TH_ACK  0x10
-        #define TH_URG  0x20
-        #define TH_ECE  0x40
-        #define TH_CWR  0x80
-        #define TH_FLAGS        (TH_FIN|TH_SYN|TH_RST|TH_ACK|TH_URG|TH_ECE|TH_CWR)
-        u_short th_win;                 /* window */
-        u_short th_sum;                 /* checksum */
-        u_short th_urp;                 /* urgent pointer */
+    u_char  th_flags;
+#define TH_FIN  0x01
+#define TH_SYN  0x02
+#define TH_RST  0x04
+#define TH_PUSH 0x08
+#define TH_ACK  0x10
+#define TH_URG  0x20
+#define TH_ECE  0x40
+#define TH_CWR  0x80
+#define TH_FLAGS        (TH_FIN|TH_SYN|TH_RST|TH_ACK|TH_URG|TH_ECE|TH_CWR)
+    u_short th_win;                 /* window */
+    u_short th_sum;                 /* checksum */
+    u_short th_urp;                 /* urgent pointer */
 };
+
+u_char Human_Readable = 0;
 
 void
 got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet);
@@ -295,12 +305,12 @@ void
 print_app_banner(void)
 {
 
-	printf("%s - %s\n", APP_NAME, APP_DESC);
-	printf("%s\n", APP_COPYRIGHT);
-	printf("%s\n", APP_DISCLAIMER);
-	printf("\n");
+    printf("%s - %s\n", APP_NAME, APP_DESC);
+    printf("%s\n", APP_COPYRIGHT);
+    printf("%s\n", APP_DISCLAIMER);
+    printf("\n");
 
-return;
+    return;
 }
 
 /*
@@ -309,41 +319,78 @@ return;
 void
 print_app_usage(void)
 {
+    printf("\nUsage: %s [-hb] [-p port/protocol] [-f filter] [device or pcap file]\n", APP_NAME);
+    printf("\n");
+    printf("Options:\n");
+    printf("    -h  Print human-readable cipher name rather than cipher id.\n");
+    printf("    -b  Batch mode (no banner).\n");
+    printf("    -p  Port or protocol.\n");
+    printf("    -f  Customized filter.\n");
 
-	printf("Usage: %s <source> [<filter>|<port>]\n", APP_NAME);
-	printf("\n");
-	printf("Options:\n");
-	printf("    source       Get packets from <source> (PCAP file or network interface)\n");
-	printf("    filter       Override packet filter string. Available presets: https xmpp\n");
-	printf("    port         Port number on which TLS hellos will be searched\n");
-	printf("\n");
-
-return;
+    return;
 }
 
-#define SSL_MIN_GOOD_VERSION	0x002
-#define SSL_MAX_GOOD_VERSION	0x304	// let's be optimistic here!
+#define SSL_MIN_GOOD_VERSION    0x002
+#define SSL_MAX_GOOD_VERSION    0x304    // let's be optimistic here!
 
-#define TLS_HANDSHAKE		22
-#define TLS_CLIENT_HELLO	1
-#define TLS_SERVER_HELLO	2
+#define TLS_HANDSHAKE    22
+#define SSL_HANDSHAKE    0x80
+#define TLS_CLIENT_HELLO    1
+#define TLS_SERVER_HELLO    2
 
-#define OFFSET_HELLO_VERSION	9
-#define OFFSET_SESSION_LENGTH	43
-#define OFFSET_CIPHER_LIST	44
+#define OFFSET_HELLO_VERSION    9
+#define SSL_OFFSET_HELLO_VERSION    3
+#define OFFSET_SESSION_LENGTH    43
+#define OFFSET_CIPHER_LIST    44
+#define SSL_OFFSET_CIPHERSPEC_LENGTH    5
+#define SSL_OFFSET_CIPHER_LIST    11
 
 char*
 ssl_version(u_short version) {
-	static char hex[7];
-	switch (version) {
-		case 0x002: return "SSLv2";
-		case 0x300: return "SSLv3";
-		case 0x301: return "TLSv1";
-		case 0x302: return "TLSv1.1";
-		case 0x303: return "TLSv1.2";
-	}
-	snprintf(hex, sizeof(hex), "0x%04hx", version);
-	return hex;
+    static char hex[7];
+    switch (version) {
+        case 0x002: return "SSLv2";
+        case 0x300: return "SSLv3";
+        case 0x301: return "TLSv1";
+        case 0x302: return "TLSv1.1";
+        case 0x303: return "TLSv1.2";
+    }
+    snprintf(hex, sizeof(hex), "0x%04hx", version);
+    return hex;
+}
+
+const char*
+get_readable_cipher_name(
+        const int cipher_id,
+        const int dict_len,
+        const value_string *dict
+) {
+    int l = 0, r = dict_len - 1, m;
+    while (l <= r) {
+        m = ((r-l)>>1) + l;
+        if (dict[m].value == cipher_id) return dict[m].strptr;
+        if (dict[m].value < cipher_id) {
+            l = m + 1;
+        } else {
+            r = m - 1;
+        }
+    }
+    return 0;
+}
+
+void
+print_cipher(const int cipher_id) {
+    if (Human_Readable) {
+        const char *cipher_name;
+        cipher_name = get_readable_cipher_name(cipher_id, LEN(ssl_20_cipher_suites), ssl_20_cipher_suites);
+        if (!cipher_name)
+            cipher_name = get_readable_cipher_name(cipher_id, LEN(ssl_31_ciphersuite), ssl_31_ciphersuite);
+        if (cipher_name) {
+            printf(":%s", cipher_name);
+            return;
+        }
+    }
+    printf(":%06X", cipher_id);
 }
 
 /*
@@ -354,155 +401,181 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
 {
 
 #ifdef LOG_COUNTER
-	static u_long count = 1;                   /* packet counter */
+    static u_long count = 1;                   /* packet counter */
 #endif
-	
-	/* declare pointers to packet headers */
-	const struct sniff_ethernet *ethernet;  /* The ethernet header [1] */
-	const struct sniff_ip *ip;              /* The IP header */
-	const struct sniff_tcp *tcp;            /* The TCP header */
-	const u_char *payload;                  /* Packet payload */
 
-	int size_ip;
-	int size_iptotal;
-	int size_tcp;
-	int size_payload;
-	
+    /* declare pointers to packet headers */
+    const struct sniff_ethernet *ethernet;  /* The ethernet header [1] */
+    const struct sniff_ip *ip;              /* The IP header */
+    const struct sniff_tcp *tcp;            /* The TCP header */
+    const u_char *payload;                  /* Packet payload */
+
+    int size_ip;
+    int size_iptotal;
+    int size_tcp;
+    int size_payload;
+
 #ifdef LOG_COUNTER
-	printf("%u\t", count);
-	count++;
+    printf("%u\t", count);
+    count++;
 #endif
-	
-	/* define ethernet header */
-	ethernet = (struct sniff_ethernet*)(packet);
-	
-	/* define/compute ip header offset */
-	ip = (struct sniff_ip*)(packet + SIZE_ETHERNET);
-	size_ip = IP_HL(ip)*4;
-	if (size_ip < 20) {
-		printf("Invalid IP header length: %u bytes\n", size_ip);
-		return;
-	}
+
+    /* define ethernet header */
+    ethernet = (struct sniff_ethernet*)(packet);
+
+    /* define/compute ip header offset */
+    ip = (struct sniff_ip*)(packet + SIZE_ETHERNET);
+    size_ip = IP_HL(ip)*4;
+    if (size_ip < 20) {
+        printf("Invalid IP header length: %u bytes\n", size_ip);
+        return;
+    }
 
 #ifdef LOG_ADDRESSES
-	/* print source and destination IP addresses */
-	printf("%s\t", inet_ntoa(ip->ip_src));
-	printf("%s\t", inet_ntoa(ip->ip_dst));
+    /* print source and destination IP addresses */
+    printf("%s\t", inet_ntoa(ip->ip_src));
+    printf("%s\t", inet_ntoa(ip->ip_dst));
 #endif
-	
-	/* determine protocol */	
-	switch(ip->ip_p) {
-		case IPPROTO_TCP:
-			break;
-		case IPPROTO_UDP:
-			printf("UDP\n");
-			return;
-		case IPPROTO_ICMP:
-			printf("ICMP\n");
-			return;
-		case IPPROTO_IP:
-			printf("IP\n");
-			return;
-		default:
-			printf("Protocol: unknown\n");
-			return;
-	}
-	
-	/*
-	 *  OK, this packet is TCP.
-	 */
-	
-	/* define/compute tcp header offset */
-	tcp = (struct sniff_tcp*)(packet + SIZE_ETHERNET + size_ip);
-	size_tcp = TH_OFF(tcp)*4;
-	if (size_tcp < 20) {
-		printf("Invalid TCP header length: %u bytes\n", size_tcp);
-		return;
-	}
-	
+
+    /* determine protocol */
+    switch(ip->ip_p) {
+        case IPPROTO_TCP:
+            break;
+        case IPPROTO_UDP:
+            printf("UDP\n");
+            return;
+        case IPPROTO_ICMP:
+            printf("ICMP\n");
+            return;
+        case IPPROTO_IP:
+            printf("IP\n");
+            return;
+        default:
+            printf("Protocol: unknown\n");
+            return;
+    }
+
+    /*
+     *  OK, this packet is TCP.
+     */
+
+    /* define/compute tcp header offset */
+    tcp = (struct sniff_tcp*)(packet + SIZE_ETHERNET + size_ip);
+    size_tcp = TH_OFF(tcp)*4;
+    if (size_tcp < 20) {
+        printf("Invalid TCP header length: %u bytes\n", size_tcp);
+        return;
+    }
+
 #ifdef LOG_PORTS
-	printf("%hu\t", ntohs(tcp->th_sport));
-	printf("%hu\t", ntohs(tcp->th_dport));
+    printf("%hu\t", ntohs(tcp->th_sport));
+    printf("%hu\t", ntohs(tcp->th_dport));
 #endif
-	
-	/* compute tcp payload (segment) size */
-	size_iptotal = ntohs(ip->ip_len);
-	if (size_iptotal == 0 || size_iptotal > header->caplen)
-	{
-		/* if TSO is used, ip_len is 0x0000 */
-		/* only process up to caplen bytes. */
-		size_iptotal = header->caplen;
-	}
-	size_payload = size_iptotal - (size_ip + size_tcp);
 
-	if (size_payload < OFFSET_CIPHER_LIST + 3) { // at least one cipher + compression
-		printf("TLS handshake header too short: %d bytes\n", size_payload);
-		return;
-	}
+    /* compute tcp payload (segment) size */
+    size_iptotal = ntohs(ip->ip_len);
+    if (size_iptotal == 0 || size_iptotal > header->caplen)
+    {
+        /* if TSO is used, ip_len is 0x0000 */
+        /* only process up to caplen bytes. */
+        size_iptotal = header->caplen;
+    }
+    size_payload = size_iptotal - (size_ip + size_tcp);
 
-	/* define/compute tcp payload (segment) offset */
-	payload = (u_char *)(packet + SIZE_ETHERNET + size_ip + size_tcp);
+    /* define/compute tcp payload (segment) offset */
+    payload = (u_char *)(packet + SIZE_ETHERNET + size_ip + size_tcp);
 
-	if (payload[0] != TLS_HANDSHAKE) {
-		printf("Not a TLS handshake: 0x%02hhx\n", payload[0]);
-		return;
-	}
+    if (payload[0] == TLS_HANDSHAKE) {
+        if (size_payload < OFFSET_CIPHER_LIST + 3) { // at least one cipher + compression
+            printf("TLS handshake header too short: %d bytes\n", size_payload);
+            return;
+        }
 
-	u_short proto_version = payload[1]*256 + payload[2];
-	printf("%s ", ssl_version(proto_version));
-	u_short hello_version = payload[OFFSET_HELLO_VERSION]*256 + payload[OFFSET_HELLO_VERSION+1];
+        u_short proto_version = payload[1]*256 + payload[2];
+        printf("%s ", ssl_version(proto_version));
+        u_short hello_version = payload[OFFSET_HELLO_VERSION]*256 + payload[OFFSET_HELLO_VERSION+1];
 
-	if (proto_version < SSL_MIN_GOOD_VERSION || proto_version >= SSL_MAX_GOOD_VERSION ||
-	    hello_version < SSL_MIN_GOOD_VERSION || hello_version >= SSL_MAX_GOOD_VERSION) {
-		printf("%s bad version(s)\n", ssl_version(hello_version));
-		return;
-	}
+        if (proto_version < SSL_MIN_GOOD_VERSION || proto_version >= SSL_MAX_GOOD_VERSION ||
+                hello_version < SSL_MIN_GOOD_VERSION || hello_version >= SSL_MAX_GOOD_VERSION) {
+            printf("%s bad version(s)\n", ssl_version(hello_version));
+            return;
+        }
 
-	// skip session ID
-	const u_char *cipher_data = &payload[OFFSET_SESSION_LENGTH];
+        // skip session ID
+        const u_char *cipher_data = &payload[OFFSET_SESSION_LENGTH];
 #ifdef LOG_SESSIONID
-	if (cipher_data[0] != 0) {
-		printf("SID[%hhu] ", cipher_data[0]);
-	}
+        if (cipher_data[0] != 0) {
+            printf("SID[%hhu] ", cipher_data[0]);
+        }
 #endif
-	if (size_payload < OFFSET_SESSION_LENGTH + cipher_data[0] + 3) {
-		printf("SessionID too long: %hhu bytes\n", cipher_data[0]);
-		return;
-	}
+        if (size_payload < OFFSET_SESSION_LENGTH + cipher_data[0] + 3) {
+            printf("SessionID too long: %hhu bytes\n", cipher_data[0]);
+            return;
+        }
 
 
-	cipher_data += 1 + cipher_data[0];
+        cipher_data += 1 + cipher_data[0];
 
-	switch (payload[5]) {
-		case TLS_CLIENT_HELLO:
-			printf("ClientHello %s ", ssl_version(hello_version));
-			u_short cs_len = cipher_data[0]*256 + cipher_data[1];
-			cipher_data += 2; // skip cipher suites length
-			// FIXME: check for buffer overruns
-			int cs_id;
-			for (cs_id = 0; cs_id < cs_len/2; cs_id++)
-				printf(":%02hhX%02hhX", cipher_data[2*cs_id], cipher_data[2*cs_id + 1]);
-			printf(":\n");
-			break;
-		case TLS_SERVER_HELLO:
-			printf("ServerHello %s ", ssl_version(hello_version));
-			printf("cipher %02hhX%02hhX\n", cipher_data[0], cipher_data[1]);
-			break;
-		default:
-			printf("Not a Hello\n");
-			return;
-	}
+        switch (payload[5]) {
+            case TLS_CLIENT_HELLO:
+                printf("ClientHello %s ", ssl_version(hello_version));
+                u_short cs_len = cipher_data[0]*256 + cipher_data[1];
+                cipher_data += 2; // skip cipher suites length
+                // FIXME: check for buffer overruns
+                int cs_id;
+                for (cs_id = 0; cs_id < cs_len/2; cs_id++)
+                    print_cipher((cipher_data[2*cs_id]<<8) | cipher_data[2*cs_id + 1]);
+                printf(":\n");
+                break;
+            case TLS_SERVER_HELLO:
+                printf("ServerHello %s ", ssl_version(hello_version));
+                print_cipher((cipher_data[0]<<8) | cipher_data[1]);
+                printf(":\n");
+                break;
+            default:
+                printf("Not a Hello\n");
+                return;
+        }
 
-	
+    } else if (payload[0] == SSL_HANDSHAKE && (payload[2] == TLS_CLIENT_HELLO)) {
+        // SSL 2.0 client hello is supported even though SSL 2.0 is not supported
+        if (size_payload <= SSL_OFFSET_CIPHERSPEC_LENGTH + 1) {
+            printf("SSLv2 handshake header too short: %d bytes\n", size_payload);
+            return;
+        }
+
+        printf("%s ", ssl_version(0x002));
+        u_short hello_version = payload[SSL_OFFSET_HELLO_VERSION]*256 + payload[SSL_OFFSET_HELLO_VERSION+1];
+
+        if (hello_version < SSL_MIN_GOOD_VERSION || hello_version >= SSL_MAX_GOOD_VERSION) {
+            printf("%s bad version(s)\n", ssl_version(hello_version));
+            return;
+        }
+        printf("ClientHello %s ", ssl_version(hello_version));
+
+        u_short cs_len = payload[SSL_OFFSET_CIPHERSPEC_LENGTH]*256 + payload[SSL_OFFSET_CIPHERSPEC_LENGTH+1];
+        if (size_payload < SSL_OFFSET_CIPHER_LIST + cs_len) {
+            printf("SSLv2 handshake header too short: %d bytes\n", size_payload);
+            return;
+        }
+        int cs_offset;
+        for (cs_offset = SSL_OFFSET_CIPHER_LIST; cs_offset < SSL_OFFSET_CIPHER_LIST+cs_len; cs_offset+=3)
+            print_cipher((payload[cs_offset]<<16) | (payload[cs_offset+1]<<8) | payload[cs_offset+2]);
+        printf(":\n");
+    } else {
+        printf("Not a TLS handshake: 0x%02hhx\n", payload[0]);
+    }
+
 }
 
 // PCAP has no payload[offset] field, so we need to get the payload offset
 // from the TCP header (offset 12, upper 4 bits, number of 4-byte words):
-#define FILTER_TCPSIZE	"tcp[12]/16*4"
+#define FILTER_TCPSIZE    "tcp[12]/16*4"
 // TLS Handshake starts with a '22' byte, version, length,
 // and then '01'/'02' for client/server hello
-#define FILTER_TLS	"tcp[" FILTER_TCPSIZE "]=22 and " \
-			"(tcp[" FILTER_TCPSIZE "+5]=1 or tcp[" FILTER_TCPSIZE "+5]=2)"
+#define FILTER_TLS    "(tcp[" FILTER_TCPSIZE "]=22 and " \
+    "(tcp[" FILTER_TCPSIZE "+5]=1 or tcp[" FILTER_TCPSIZE "+5]=2)) or " \
+"(tcp[" FILTER_TCPSIZE "]=128 and tcp[" FILTER_TCPSIZE "+2]=1)"
 
 char *filter_https = "tcp port 443 and " FILTER_TLS;
 char *filter_xmpp = "(tcp port 5222 or tcp port 5223 or tcp port 5269) and " FILTER_TLS;
@@ -511,123 +584,128 @@ char *filter_format = "tcp port %-5hu and " FILTER_TLS; // strlen("%-5hu")==5, e
 int main(int argc, char **argv)
 {
 
-	char *dev = NULL;			/* capture device name */
-	int dev_is_file = 0;			/* capture from a file, not from the network */
-	char errbuf[PCAP_ERRBUF_SIZE];		/* error buffer */
-	pcap_t *handle;				/* packet capture handle */
+    char *dev = NULL;              /* capture device name */
+    int dev_is_file = 0;           /* capture from a file, not from the network */
+    char errbuf[PCAP_ERRBUF_SIZE]; /* error buffer */
+    pcap_t *handle;                /* packet capture handle */
 
-	/* filter expression [3]: port 5222, TLS Handshake, ClientHello/ServerHello */
-	char *filter_exp = filter_https;
-	uint16_t filter_port;
-	struct bpf_program fp;			/* compiled filter program (expression) */
-	bpf_u_int32 mask;			/* subnet mask */
-	bpf_u_int32 net;			/* ip */
+    /* filter expression [3]: port 5222, TLS Handshake, ClientHello/ServerHello */
+    char *filter_exp = filter_https;
+    uint16_t filter_port;
+    struct bpf_program fp;  /* compiled filter program (expression) */
+    bpf_u_int32 mask;       /* subnet mask */
+    bpf_u_int32 net;        /* ip */
 
-	/* Make sure pipe sees new packets unbuffered. */
-	 setvbuf(stdout, (char *)NULL, _IOLBF, 0);
+    /* Make sure pipe sees new packets unbuffered. */
+    setvbuf(stdout, (char *)NULL, _IOLBF, 0);
 
-	print_app_banner();
+    u_char batch_mode = 0;
+    int opt;
+    while ((opt = getopt(argc, argv, "hbp:f:")) != -1) {
+        switch (opt) {
+            case 'h': Human_Readable = 1; break;
+            case 'b': batch_mode = 1; break;
+            case 'p':
+                      if (strcmp(optarg, "https") == 0) {
+                          filter_exp = filter_https;
+                      } else if (strcmp(optarg, "xmpp") == 0) {
+                          filter_exp = filter_xmpp;
+                      } else if (sscanf(optarg, "%hu", &filter_port) == 1) {
+                          /* HACK: filter_format is long enough to fit formatted string */
+                          filter_exp = strdup(filter_format);
+                          sprintf(filter_exp, filter_format, filter_port);
+                      }
+                      break;
+            case 'f':
+                      filter_exp = optarg;
+                      break;
+            default:
+                      print_app_usage();
+                      exit(EXIT_FAILURE);
+        }
+    }
+    if (optind < argc) {
+        dev = argv[optind];
+    } else {
+        /* find a capture device if not specified on command-line */
+        dev = pcap_lookupdev(errbuf);
+        if (dev == NULL) {
+            fprintf(stderr, "Couldn't find default device: %s\n",
+                    errbuf);
+            exit(EXIT_FAILURE);
+        }
+    }
 
-	/* check for capture device name on command-line */
-	if (argc == 2) {
-		dev = argv[1];
-	}
-	else if (argc == 3) {
-		dev = argv[1];
-		if (strcmp(argv[2], "https") == 0)
-			filter_exp = filter_https;
-		else
-		if (strcmp(argv[2], "xmpp") == 0)
-			filter_exp = filter_xmpp;
-		else
-		if (sscanf(argv[2], "%hu", &filter_port) == 1) {
-			/* HACK: filter_format is long enough to fit formatted string */
-			filter_exp = strdup(filter_format);
-			sprintf(filter_exp, filter_format, filter_port);
-		} else
-			filter_exp = argv[2];
-	}
-	else if (argc > 3) {
-		fprintf(stderr, "error: unrecognized command-line options\n\n");
-		print_app_usage();
-		exit(EXIT_FAILURE);
-	}
-	else {
-		/* find a capture device if not specified on command-line */
-		dev = pcap_lookupdev(errbuf);
-		if (dev == NULL) {
-			fprintf(stderr, "Couldn't find default device: %s\n",
-			    errbuf);
-			exit(EXIT_FAILURE);
-		}
-	}
-	
-	/* try to open capture "device" as a file, if it fails */
-	/* get network number and mask associated with capture device */
-	if (access(dev, R_OK) != -1) {
-		dev_is_file = 1;
-	} else
-	if (pcap_lookupnet(dev, &net, &mask, errbuf) == -1) {
-		fprintf(stderr, "Couldn't get netmask for device %s: %s\n",
-		    dev, errbuf);
-		net = 0;
-		mask = 0;
-	}
+    if (!batch_mode) print_app_banner();
 
-	/* print capture info */
-	printf("Source: %s\n", dev);
-	printf("Filter expression: %s\n", filter_exp);
-	printf("\n");
+    /* try to open capture "device" as a file, if it fails */
+    /* get network number and mask associated with capture device */
+    if (access(dev, R_OK) != -1) {
+        dev_is_file = 1;
+    } else
+        if (pcap_lookupnet(dev, &net, &mask, errbuf) == -1) {
+            fprintf(stderr, "Couldn't get netmask for device %s: %s\n",
+                    dev, errbuf);
+            net = 0;
+            mask = 0;
+        }
+
+    /* print capture info */
+    if (!batch_mode) {
+        printf("Source: %s\n", dev);
+        printf("Filter expression: %s\n", filter_exp);
+        printf("\n");
+    }
 #ifdef LOG_COUNTER
-	printf("Counter\t");
+    if (!batch_mode) printf("Counter\t");
 #endif
 #ifdef LOG_ADDRESSES
-	printf("Source\t\tDestination\t");
+    if (!batch_mode) printf("Source\t\tDestination\t");
 #endif
 #ifdef LOG_PORTS
-	printf("SrcPort\tDstPort\t");
+    if (!batch_mode) printf("SrcPort\tDstPort\t");
 #endif
-	printf("Packet content\n");
+    if (!batch_mode) printf("Packet content\n");
 
-	/* open capture device */
-	if (dev_is_file)
-		handle = pcap_open_offline(dev, errbuf);
-	else
-		handle = pcap_open_live(dev, SNAP_LEN, 1, 1000, errbuf);
-	if (handle == NULL) {
-		fprintf(stderr, "Couldn't open source %s: %s\n", dev, errbuf);
-		exit(EXIT_FAILURE);
-	}
+    /* open capture device */
+    if (dev_is_file)
+        handle = pcap_open_offline(dev, errbuf);
+    else
+        handle = pcap_open_live(dev, SNAP_LEN, 1, 1000, errbuf);
+    if (handle == NULL) {
+        fprintf(stderr, "Couldn't open source %s: %s\n", dev, errbuf);
+        exit(EXIT_FAILURE);
+    }
 
-	/* make sure we're capturing on an Ethernet device [2] */
-	if (pcap_datalink(handle) != DLT_EN10MB) {
-		fprintf(stderr, "%s is not an Ethernet\n", dev);
-		exit(EXIT_FAILURE);
-	}
+    /* make sure we're capturing on an Ethernet device [2] */
+    if (pcap_datalink(handle) != DLT_EN10MB) {
+        fprintf(stderr, "%s is not an Ethernet\n", dev);
+        exit(EXIT_FAILURE);
+    }
 
-	/* compile the filter expression */
-	if (pcap_compile(handle, &fp, filter_exp, 0, net) == -1) {
-		fprintf(stderr, "Couldn't parse filter %s: %s\n",
-		    filter_exp, pcap_geterr(handle));
-		exit(EXIT_FAILURE);
-	}
+    /* compile the filter expression */
+    if (pcap_compile(handle, &fp, filter_exp, 0, net) == -1) {
+        fprintf(stderr, "Couldn't parse filter %s: %s\n",
+                filter_exp, pcap_geterr(handle));
+        exit(EXIT_FAILURE);
+    }
 
-	/* apply the compiled filter */
-	if (pcap_setfilter(handle, &fp) == -1) {
-		fprintf(stderr, "Couldn't install filter %s: %s\n",
-		    filter_exp, pcap_geterr(handle));
-		exit(EXIT_FAILURE);
-	}
+    /* apply the compiled filter */
+    if (pcap_setfilter(handle, &fp) == -1) {
+        fprintf(stderr, "Couldn't install filter %s: %s\n",
+                filter_exp, pcap_geterr(handle));
+        exit(EXIT_FAILURE);
+    }
 
-	/* now we can set our callback function */
-	pcap_loop(handle, -1, got_packet, NULL);
+    /* now we can set our callback function */
+    pcap_loop(handle, -1, got_packet, NULL);
 
-	/* cleanup */
-	pcap_freecode(&fp);
-	pcap_close(handle);
+    /* cleanup */
+    pcap_freecode(&fp);
+    pcap_close(handle);
 
-	printf("\nCapture complete.\n");
+    if (!batch_mode) printf("\nCapture complete.\n");
 
-return 0;
+    return 0;
 }
 

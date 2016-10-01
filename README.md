@@ -50,13 +50,13 @@ You can run the tool on a PCAP dump file or directly on a network interface
 You can add a filter to select which protocol to use:
 
 ```sh
-./tls-hello-dump eth0 xmpp	# Filter XMPP C2S (5222, 5223) and S2S (5269)
-./tls-hello-dump eth0 https	# Filter HTTPS (443)
-./tls-hello-dump eth0 995	# Filter POP3S (995)
+./tls-hello-dump -p xmpp eth0 # Filter XMPP C2S (5222, 5223) and S2S (5269)
+./tls-hello-dump -p http eth0 # Filter HTTPS (443)
+./tls-hello-dump -p 995  eth0 # Filter POP3S (995)
 
 # The following is a manually crafted POP3/POP3S filter
-./tls-hello-dump eth0 '(tcp port 110 or tcp port 995)
-	and tcp[tcp[12]/16*4]=22 and (tcp[tcp[12]/16*4+5]=1 or tcp[tcp[12]/16*4+5]=2)'
+./tls-hello-dump -f '(tcp port 110 or tcp port 995)
+	and tcp[tcp[12]/16*4]=22 and (tcp[tcp[12]/16*4+5]=1 or tcp[tcp[12]/16*4+5]=2)' eth0
 ```
 
 (The cryptic filter part starting with `and` is needed to filter out TLS Hello
@@ -91,7 +91,7 @@ Because hex is not very readable, you can convert the codes into their
 Wireshark-equivalent names, by filtering the output with the following `sed`
 command:
 
-	./tls-hello-dump eth0 | sed -f ./readable.sed
+	./tls-hello-dump -h
 	...
 	83.223.75.24    192.168.23.42   TLSv1 ServerHello TLSv1 cipher TLS_DHE_RSA_WITH_AES_256_CBC_SHA
 	...
@@ -153,7 +153,7 @@ Sniffer example of TCP/IP packet capture using libpcap.
 Version 0.1.1 (2005-07-05)
 Copyright (c) 2005 The Tcpdump Group
 
-This software is intended to be used as a practical example and 
+This software is intended to be used as a practical example and
 demonstration of the libpcap library; available at:
 http://www.tcpdump.org/
 

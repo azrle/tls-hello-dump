@@ -2,8 +2,8 @@
 
 / ServerHello / {
 	protocols[$5]++;
-	ciphers[$7]++;
-	pc[$5 "\t" $7]++;
+	ciphers[$6]++;
+	pc[$5 "\t" $6]++;
 }
 
 function dump(name, counters) {
