@@ -477,12 +477,6 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
         return;
     }
 
-#ifdef LOG_ADDRESSES
-    /* print source and destination IP addresses */
-    printf("%s\t", inet_ntoa(ip->ip_src));
-    printf("%s\t", inet_ntoa(ip->ip_dst));
-#endif
-
     /* determine protocol */
     switch(ip->ip_p) {
         case IPPROTO_TCP:
@@ -497,6 +491,11 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
             printf("IP\n");
             return;
         default:
+#ifdef LOG_ADDRESSES
+            /* print source and destination IP addresses */
+            printf("%s\t", inet_ntoa(ip->ip_src));
+            printf("%s\t", inet_ntoa(ip->ip_dst));
+#endif
             printf("Protocol: unknown\n");
             return;
     }
@@ -513,9 +512,15 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
         return;
     }
 
+#ifdef LOG_ADDRESSES
 #ifdef LOG_PORTS
-    printf("%hu\t", ntohs(tcp->th_sport));
-    printf("%hu\t", ntohs(tcp->th_dport));
+    printf("%s:%hu\t",inet_ntoa(ip->ip_src), ntohs(tcp->th_sport));
+    printf("%s:%hu\t",inet_ntoa(ip->ip_dst), ntohs(tcp->th_dport));
+#else
+    /* print source and destination IP addresses */
+    printf("%s\t", inet_ntoa(ip->ip_src));
+    printf("%s\t", inet_ntoa(ip->ip_dst));
+#endif
 #endif
 
     /* compute tcp payload (segment) size */
@@ -719,9 +724,6 @@ int main(int argc, char **argv)
 #endif
 #ifdef LOG_ADDRESSES
     if (!batch_mode) printf("Source\t\tDestination\t");
-#endif
-#ifdef LOG_PORTS
-    if (!batch_mode) printf("SrcPort\tDstPort\t");
 #endif
     if (!batch_mode) printf("Packet content\n");
 
