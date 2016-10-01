@@ -333,6 +333,7 @@ print_app_usage(void)
 #define SSL_MIN_GOOD_VERSION    0x002
 #define SSL_MAX_GOOD_VERSION    0x304    // let's be optimistic here!
 
+#define TLS_ALERT        21
 #define TLS_HANDSHAKE    22
 #define SSL_HANDSHAKE    0x80
 #define TLS_CLIENT_HELLO    1
@@ -344,6 +345,10 @@ print_app_usage(void)
 #define OFFSET_CIPHER_LIST    44
 #define SSL_OFFSET_CIPHERSPEC_LENGTH    5
 #define SSL_OFFSET_CIPHER_LIST    11
+#define OFFSET_ALERT_LEVEL 5
+#define OFFSET_ALERT_DESC  6
+
+#define ALERT_LEVEL(x) (x==2?"FATAL":"WARN")
 
 char*
 ssl_version(u_short version) {
@@ -356,6 +361,47 @@ ssl_version(u_short version) {
         case 0x303: return "TLSv1.2";
     }
     snprintf(hex, sizeof(hex), "0x%04hx", version);
+    return hex;
+}
+
+/* ref: https://www.iana.org/assignments/tls-parameters/tls-parameters.txt */
+const char*
+alert_msg(const u_char alert_desc) {
+    static char hex[5];
+    switch (alert_desc) {
+        case 0  : return "close_notify";                    // [RFC5246]
+        case 10 : return "unexpected_message";              // [RFC5246]
+        case 20 : return "bad_record_mac";                  // [RFC5246]
+        case 21 : return "decryption_failed";               // [RFC5246]
+        case 22 : return "record_overflow";                 // [RFC5246]
+        case 30 : return "decompression_failure";           // [RFC5246]
+        case 40 : return "handshake_failure";               // [RFC5246]
+        case 41 : return "no_certificate_RESERVED";         // [RFC5246]
+        case 42 : return "bad_certificate";                 // [RFC5246]
+        case 43 : return "unsupported_certificate";         // [RFC5246]
+        case 44 : return "certificate_revoked";             // [RFC5246]
+        case 45 : return "certificate_expired";             // [RFC5246]
+        case 46 : return "certificate_unknown";             // [RFC5246]
+        case 47 : return "illegal_parameter";               // [RFC5246]
+        case 48 : return "unknown_ca";                      // [RFC5246]
+        case 49 : return "access_denied";                   // [RFC5246]
+        case 50 : return "decode_error";                    // [RFC5246]
+        case 51 : return "decrypt_error";                   // [RFC5246]
+        case 60 : return "export_restriction_RESERVED";     // [RFC5246]
+        case 70 : return "protocol_version";                // [RFC5246]
+        case 71 : return "insufficient_security";           // [RFC5246]
+        case 80 : return "internal_error";                  // [RFC5246]
+        case 86 : return "inappropriate_fallback";          // [RFC7507]
+        case 90 : return "user_canceled";                   // [RFC5246]
+        case 100: return "no_renegotiation";                // [RFC5246]
+        case 110: return "unsupported_extension";           // [RFC5246]
+        case 111: return "certificate_unobtainable";        // [RFC6066]
+        case 112: return "unrecognized_name";               // [RFC6066]
+        case 113: return "bad_certificate_status_response"; // [RFC6066]
+        case 114: return "bad_certificate_hash_value";      // [RFC6066]
+        case 115: return "unknown_psk_identity";            // [RFC4279]
+    }
+    snprintf(hex, sizeof(hex), "0x%02X", alert_desc);
     return hex;
 }
 
@@ -485,7 +531,17 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
     /* define/compute tcp payload (segment) offset */
     payload = (u_char *)(packet + SIZE_ETHERNET + size_ip + size_tcp);
 
-    if (payload[0] == TLS_HANDSHAKE) {
+    if (payload[0] == TLS_ALERT) {
+        if (size_payload <= OFFSET_ALERT_DESC) { // at least one cipher + compression
+            printf("TLS alert header too short: %d bytes\n", size_payload);
+            return;
+        }
+
+        u_short proto_version = payload[1]*256 + payload[2];
+        u_char alert_level = payload[OFFSET_ALERT_LEVEL];
+        u_char alert_desc = payload[OFFSET_ALERT_DESC];
+        printf("%s Alert %s %s\n", ssl_version(proto_version), ALERT_LEVEL(alert_level), alert_msg(alert_desc));
+    } else if (payload[0] == TLS_HANDSHAKE) {
         if (size_payload < OFFSET_CIPHER_LIST + 3) { // at least one cipher + compression
             printf("TLS handshake header too short: %d bytes\n", size_payload);
             return;
@@ -573,9 +629,11 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
 #define FILTER_TCPSIZE    "tcp[12]/16*4"
 // TLS Handshake starts with a '22' byte, version, length,
 // and then '01'/'02' for client/server hello
-#define FILTER_TLS    "(tcp[" FILTER_TCPSIZE "]=22 and " \
+// And TLS Alert starts with a '21' byte, version, length.
+#define FILTER_TLS    "(tcp[" FILTER_TCPSIZE "]=21) or "\
+    "(tcp[" FILTER_TCPSIZE "]=22 and " \
     "(tcp[" FILTER_TCPSIZE "+5]=1 or tcp[" FILTER_TCPSIZE "+5]=2)) or " \
-"(tcp[" FILTER_TCPSIZE "]=128 and tcp[" FILTER_TCPSIZE "+2]=1)"
+    "(tcp[" FILTER_TCPSIZE "]=128 and tcp[" FILTER_TCPSIZE "+2]=1)"
 
 char *filter_https = "tcp port 443 and " FILTER_TLS;
 char *filter_xmpp = "(tcp port 5222 or tcp port 5223 or tcp port 5269) and " FILTER_TLS;
