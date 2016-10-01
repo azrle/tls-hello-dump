@@ -10,7 +10,7 @@ typedef struct _value_string {
 
 /*
  * following codes are shamelessly copied from
- * https://github.com/boundary/wireshark/blob/master/epan/dissectors/packet-ssl-utils.c
+ * https://code.wireshark.org/review/gitweb?p=wireshark.git;a=blob_plain;f=epan/dissectors/packet-ssl-utils.c
  *
  */
 
@@ -259,6 +259,39 @@ static const value_string ssl_20_cipher_suites[] = {
             0xFF,0x00-FF Reserved for Private Use [RFC5246]
             */
 
+    /* old numbers used in the beginning
+     * http://tools.ietf.org/html/draft-agl-tls-chacha20poly1305 */
+    { 0x00CC13, "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256" },
+    { 0x00CC14, "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256" },
+    { 0x00CC15, "TLS_DHE_RSA_WITH_CHACHA20_POLY1305_SHA256" },
+
+    /* http://tools.ietf.org/html/draft-ietf-tls-chacha20-poly1305 */
+    { 0x00CCA8, "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256" },
+    { 0x00CCA9, "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256" },
+    { 0x00CCAA, "TLS_DHE_RSA_WITH_CHACHA20_POLY1305_SHA256" },
+    { 0x00CCAB, "TLS_PSK_WITH_CHACHA20_POLY1305_SHA256" },
+    { 0x00CCAC, "TLS_ECDHE_PSK_WITH_CHACHA20_POLY1305_SHA256" },
+    { 0x00CCAD, "TLS_DHE_PSK_WITH_CHACHA20_POLY1305_SHA256" },
+    { 0x00CCAE, "TLS_RSA_PSK_WITH_CHACHA20_POLY1305_SHA256" },
+
+    /* http://tools.ietf.org/html/draft-josefsson-salsa20-tls */
+    { 0x00E410, "TLS_RSA_WITH_ESTREAM_SALSA20_SHA1" },
+    { 0x00E411, "TLS_RSA_WITH_SALSA20_SHA1" },
+    { 0x00E412, "TLS_ECDHE_RSA_WITH_ESTREAM_SALSA20_SHA1" },
+    { 0x00E413, "TLS_ECDHE_RSA_WITH_SALSA20_SHA1" },
+    { 0x00E414, "TLS_ECDHE_ECDSA_WITH_ESTREAM_SALSA20_SHA1" },
+    { 0x00E415, "TLS_ECDHE_ECDSA_WITH_SALSA20_SHA1" },
+    { 0x00E416, "TLS_PSK_WITH_ESTREAM_SALSA20_SHA1" },
+    { 0x00E417, "TLS_PSK_WITH_SALSA20_SHA1" },
+    { 0x00E418, "TLS_ECDHE_PSK_WITH_ESTREAM_SALSA20_SHA1" },
+    { 0x00E419, "TLS_ECDHE_PSK_WITH_SALSA20_SHA1" },
+    { 0x00E41A, "TLS_RSA_PSK_WITH_ESTREAM_SALSA20_SHA1" },
+    { 0x00E41B, "TLS_RSA_PSK_WITH_SALSA20_SHA1" },
+    { 0x00E41C, "TLS_DHE_PSK_WITH_ESTREAM_SALSA20_SHA1" },
+    { 0x00E41D, "TLS_DHE_PSK_WITH_SALSA20_SHA1" },
+    { 0x00E41E, "TLS_DHE_RSA_WITH_ESTREAM_SALSA20_SHA1" },
+    { 0x00E41F, "TLS_DHE_RSA_WITH_SALSA20_SHA1" },
+
     /* these from http://www.mozilla.org/projects/
          security/pki/nss/ssl/fips-ssl-ciphersuites.html */
     { 0x00fefe, "SSL_RSA_FIPS_WITH_DES_CBC_SHA"},
@@ -272,8 +305,8 @@ static const value_string ssl_20_cipher_suites[] = {
 
     { 0x010080, "SSL2_RC4_128_WITH_MD5" },
     { 0x020080, "SSL2_RC4_128_EXPORT40_WITH_MD5" },
-    { 0x030080, "SSL2_RC2_CBC_128_CBC_WITH_MD5" },
-    { 0x040080, "SSL2_RC2_CBC_128_CBC_WITH_MD5" },
+    { 0x030080, "SSL2_RC2_128_CBC_WITH_MD5" },
+    { 0x040080, "SSL2_RC2_128_CBC_EXPORT40_WITH_MD5" },
     { 0x050080, "SSL2_IDEA_128_CBC_WITH_MD5" },
     { 0x060040, "SSL2_DES_64_CBC_WITH_MD5" },
     { 0x0700c0, "SSL2_DES_192_EDE3_CBC_WITH_MD5" },
@@ -488,8 +521,9 @@ static const value_string ssl_31_ciphersuite[] = {
     { 0x00C5, "TLS_DH_anon_WITH_CAMELLIA_256_CBC_SHA256" },
     /* 0x00,0xC6-FE Unassigned  */
     /* From RFC 5746 */
-    { 0x0000FF, "TLS_EMPTY_RENEGOTIATION_INFO_SCSV" },
-    /* 0x01-BF,* Unassigned */
+    { 0x00FF, "TLS_EMPTY_RENEGOTIATION_INFO_SCSV" },
+    /* From RFC 7507 */
+    { 0x5600, "TLS_FALLBACK_SCSV" },
     /* From RFC 4492 */
     { 0xc001, "TLS_ECDH_ECDSA_WITH_NULL_SHA" },
     { 0xc002, "TLS_ECDH_ECDSA_WITH_RC4_128_SHA" },
@@ -674,6 +708,12 @@ static const value_string ssl_31_ciphersuite[] = {
     { 0xC0A9, "TLS_PSK_WITH_AES_256_CCM_8" },
     { 0xC0AA, "TLS_PSK_DHE_WITH_AES_128_CCM_8" },
     { 0xC0AB, "TLS_PSK_DHE_WITH_AES_256_CCM_8" },
+
+    /* RFC 7251 */
+    { 0xC0AC, "TLS_ECDHE_ECDSA_WITH_AES_128_CCM" },
+    { 0xC0AD, "TLS_ECDHE_ECDSA_WITH_AES_256_CCM" },
+    { 0xC0AE, "TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8" },
+    { 0xC0AF, "TLS_ECDHE_ECDSA_WITH_AES_256_CCM_8" },
 /*
 0xC0,0xAB-FF Unassigned
 0xC1-FD,* Unassigned
@@ -681,6 +721,40 @@ static const value_string ssl_31_ciphersuite[] = {
 0xFE,0xFE-FF Reserved to avoid conflicts with widely deployed implementations [Pasi_Eronen]
 0xFF,0x00-FF Reserved for Private Use [RFC5246]
 */
+
+    /* old numbers used in the beginning
+     * http://tools.ietf.org/html/draft-agl-tls-chacha20poly1305 */
+    { 0xCC13, "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256" },
+    { 0xCC14, "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256" },
+    { 0xCC15, "TLS_DHE_RSA_WITH_CHACHA20_POLY1305_SHA256" },
+
+    /* http://tools.ietf.org/html/draft-ietf-tls-chacha20-poly1305 */
+    { 0xCCA8, "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256" },
+    { 0xCCA9, "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256" },
+    { 0xCCAA, "TLS_DHE_RSA_WITH_CHACHA20_POLY1305_SHA256" },
+    { 0xCCAB, "TLS_PSK_WITH_CHACHA20_POLY1305_SHA256" },
+    { 0xCCAC, "TLS_ECDHE_PSK_WITH_CHACHA20_POLY1305_SHA256" },
+    { 0xCCAD, "TLS_DHE_PSK_WITH_CHACHA20_POLY1305_SHA256" },
+    { 0xCCAE, "TLS_RSA_PSK_WITH_CHACHA20_POLY1305_SHA256" },
+
+    /* http://tools.ietf.org/html/draft-josefsson-salsa20-tls */
+    { 0xE410, "TLS_RSA_WITH_ESTREAM_SALSA20_SHA1" },
+    { 0xE411, "TLS_RSA_WITH_SALSA20_SHA1" },
+    { 0xE412, "TLS_ECDHE_RSA_WITH_ESTREAM_SALSA20_SHA1" },
+    { 0xE413, "TLS_ECDHE_RSA_WITH_SALSA20_SHA1" },
+    { 0xE414, "TLS_ECDHE_ECDSA_WITH_ESTREAM_SALSA20_SHA1" },
+    { 0xE415, "TLS_ECDHE_ECDSA_WITH_SALSA20_SHA1" },
+    { 0xE416, "TLS_PSK_WITH_ESTREAM_SALSA20_SHA1" },
+    { 0xE417, "TLS_PSK_WITH_SALSA20_SHA1" },
+    { 0xE418, "TLS_ECDHE_PSK_WITH_ESTREAM_SALSA20_SHA1" },
+    { 0xE419, "TLS_ECDHE_PSK_WITH_SALSA20_SHA1" },
+    { 0xE41A, "TLS_RSA_PSK_WITH_ESTREAM_SALSA20_SHA1" },
+    { 0xE41B, "TLS_RSA_PSK_WITH_SALSA20_SHA1" },
+    { 0xE41C, "TLS_DHE_PSK_WITH_ESTREAM_SALSA20_SHA1" },
+    { 0xE41D, "TLS_DHE_PSK_WITH_SALSA20_SHA1" },
+    { 0xE41E, "TLS_DHE_RSA_WITH_ESTREAM_SALSA20_SHA1" },
+    { 0xE41F, "TLS_DHE_RSA_WITH_SALSA20_SHA1" },
+
     /* these from http://www.mozilla.org/projects/
          security/pki/nss/ssl/fips-ssl-ciphersuites.html */
     { 0xfefe, "SSL_RSA_FIPS_WITH_DES_CBC_SHA"},
