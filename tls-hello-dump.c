@@ -350,7 +350,7 @@ print_app_usage(void)
 
 #define ALERT_LEVEL(x) (x==2?"FATAL":"WARN")
 
-char*
+static inline char*
 ssl_version(u_short version) {
     static char hex[7];
     switch (version) {
@@ -365,7 +365,7 @@ ssl_version(u_short version) {
 }
 
 /* ref: https://www.iana.org/assignments/tls-parameters/tls-parameters.txt */
-const char*
+static inline const char*
 alert_msg(const u_char alert_desc) {
     static char hex[5];
     switch (alert_desc) {
@@ -403,25 +403,6 @@ alert_msg(const u_char alert_desc) {
     }
     snprintf(hex, sizeof(hex), "0x%02X", alert_desc);
     return hex;
-}
-
-const char*
-get_readable_cipher_name(
-        const int cipher_id,
-        const int dict_len,
-        const value_string *dict
-) {
-    int l = 0, r = dict_len - 1, m;
-    while (l <= r) {
-        m = ((r-l)>>1) + l;
-        if (dict[m].value == cipher_id) return dict[m].strptr;
-        if (dict[m].value < cipher_id) {
-            l = m + 1;
-        } else {
-            r = m - 1;
-        }
-    }
-    return 0;
 }
 
 void

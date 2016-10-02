@@ -8,6 +8,25 @@ typedef struct _value_string {
     const char *strptr;
 } value_string;
 
+static inline const char*
+get_readable_cipher_name(
+        const int cipher_id,
+        const int dict_len,
+        const value_string *dict
+) {
+    int l = 0, r = dict_len - 1, m;
+    while (l <= r) {
+        m = ((r-l)>>1) + l;
+        if (dict[m].value == cipher_id) return dict[m].strptr;
+        if (dict[m].value < cipher_id) {
+            l = m + 1;
+        } else {
+            r = m - 1;
+        }
+    }
+    return 0;
+}
+
 /*
  * following codes are shamelessly copied from
  * https://code.wireshark.org/review/gitweb?p=wireshark.git;a=blob_plain;f=epan/dissectors/packet-ssl-utils.c
