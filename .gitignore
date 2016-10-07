@@ -1,3 +1,4 @@
 .*.sw?
 tls-hello-dump
+*.o
 README.html
