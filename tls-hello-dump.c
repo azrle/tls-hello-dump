@@ -226,6 +226,7 @@
 #include <unistd.h>
 
 #include "cipher_suites.h"
+#include "inet_hashtable.h"
 
 /* default snap length (maximum bytes per packet to capture) */
 #define SNAP_LEN 1518
@@ -288,6 +289,9 @@ struct sniff_tcp {
 };
 
 u_char Human_Readable = 0;
+u_char Suppress_Success = 0;
+struct free_list *Free_List = NULL;
+struct hashtable *Inet_HT = NULL;
 
 void
 got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet);
@@ -322,6 +326,7 @@ print_app_usage(void)
     printf("\nUsage: %s [-hb] [-p port/protocol] [-f filter] [device or pcap file]\n", APP_NAME);
     printf("\n");
     printf("Options:\n");
+    printf("    -s  Suppress successful handshake.\n");
     printf("    -h  Print human-readable cipher name rather than cipher id.\n");
     printf("    -b  Batch mode (no banner).\n");
     printf("    -p  Port or protocol.\n");
@@ -330,7 +335,8 @@ print_app_usage(void)
     return;
 }
 
-#define SSL_MIN_GOOD_VERSION    0x002
+#define SSL2_VERSION 0x002
+#define SSL_MIN_GOOD_VERSION    SSL2_VERSION
 #define SSL_MAX_GOOD_VERSION    0x304    // let's be optimistic here!
 
 #define TLS_ALERT        21
@@ -426,11 +432,6 @@ print_cipher(const int cipher_id) {
 void
 got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
 {
-
-#ifdef LOG_COUNTER
-    static u_long count = 1;                   /* packet counter */
-#endif
-
     /* declare pointers to packet headers */
     const struct sniff_ethernet *ethernet;  /* The ethernet header [1] */
     const struct sniff_ip *ip;              /* The IP header */
@@ -442,11 +443,6 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
     int size_tcp;
     int size_payload;
 
-#ifdef LOG_COUNTER
-    printf("%u\t", count);
-    count++;
-#endif
-
     /* define ethernet header */
     ethernet = (struct sniff_ethernet*)(packet);
 
@@ -454,7 +450,7 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
     ip = (struct sniff_ip*)(packet + SIZE_ETHERNET);
     size_ip = IP_HL(ip)*4;
     if (size_ip < 20) {
-        printf("Invalid IP header length: %u bytes\n", size_ip);
+        // fprintf(stderr, "Invalid IP header length: %u bytes\n", size_ip);
         return;
     }
 
@@ -463,21 +459,18 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
         case IPPROTO_TCP:
             break;
         case IPPROTO_UDP:
-            printf("UDP\n");
+            fprintf(stderr, "Ignore UDP\n");
             return;
         case IPPROTO_ICMP:
-            printf("ICMP\n");
+            fprintf(stderr, "Ignore ICMP\n");
             return;
         case IPPROTO_IP:
-            printf("IP\n");
+            fprintf(stderr, "Ignore IP\n");
             return;
         default:
-#ifdef LOG_ADDRESSES
-            /* print source and destination IP addresses */
-            printf("%s\t", inet_ntoa(ip->ip_src));
-            printf("%s\t", inet_ntoa(ip->ip_dst));
-#endif
-            printf("Protocol: unknown\n");
+            fprintf(stderr, "%s\t%s\tProtocol UNKNOWN\n",
+                    inet_ntoa(ip->ip_src),
+                    inet_ntoa(ip->ip_dst));
             return;
     }
 
@@ -489,20 +482,56 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
     tcp = (struct sniff_tcp*)(packet + SIZE_ETHERNET + size_ip);
     size_tcp = TH_OFF(tcp)*4;
     if (size_tcp < 20) {
-        printf("Invalid TCP header length: %u bytes\n", size_tcp);
+        // fprintf(stderr, "Invalid TCP header length: %u bytes\n", size_tcp);
         return;
     }
 
-#ifdef LOG_ADDRESSES
-#ifdef LOG_PORTS
-    printf("%s:%hu\t",inet_ntoa(ip->ip_src), ntohs(tcp->th_sport));
-    printf("%s:%hu\t",inet_ntoa(ip->ip_dst), ntohs(tcp->th_dport));
-#else
-    /* print source and destination IP addresses */
-    printf("%s\t", inet_ntoa(ip->ip_src));
-    printf("%s\t", inet_ntoa(ip->ip_dst));
-#endif
-#endif
+    u_int cs_id, cs_len, cs_offset;
+    struct node *conn;
+    if ((tcp->th_flags & (TH_FIN|TH_RST))) {
+        /* socket is closing */
+        u_char is_from_srv = 1;
+        conn = ht_get(Inet_HT,
+                ip->ip_dst.s_addr, ip->ip_src.s_addr,
+                tcp->th_dport, tcp->th_sport);
+        if (conn == NULL) {
+            conn = ht_get(Inet_HT,
+                    ip->ip_src.s_addr, ip->ip_dst.s_addr,
+                    tcp->th_sport, tcp->th_dport);
+            is_from_srv = 0;
+        }
+        if (conn == NULL)
+            return;
+        /* close too early */
+        /* maybe rejected by server due to ssl version */
+        printf("%s:%hu\t", inet_ntoa(ip->ip_src), ntohs(tcp->th_sport));
+        printf("%s:%hu\t", inet_ntoa(ip->ip_dst), ntohs(tcp->th_dport));
+        printf("REJECT %s over %s ",
+                ssl_version(conn->hello_version),
+                ssl_version(conn->proto_version));
+        if (conn->proto_version == SSL2_VERSION) {
+            /* sslv2 */
+            for (cs_id = 0; cs_id < conn->cipher_len; cs_id += 3)
+                print_cipher(
+                        (conn->ciphers[cs_id]<<16)  |
+                        (conn->ciphers[cs_id+1]<<8) |
+                         conn->ciphers[cs_id+2]);
+        } else if (conn->proto_version > SSL2_VERSION) {
+            /* tls */
+            for (cs_id = 0; cs_id < conn->cipher_len; cs_id += 2)
+                print_cipher((conn->ciphers[cs_id]<<8) |
+                        conn->ciphers[cs_id+1]);
+        }
+        printf(":\n");
+
+        ht_remove(Free_List, Inet_HT,
+              is_from_srv? ip->ip_dst.s_addr : ip->ip_src.s_addr,
+              is_from_srv? ip->ip_src.s_addr : ip->ip_dst.s_addr,
+              is_from_srv? tcp->th_dport : tcp->th_sport,
+              is_from_srv? tcp->th_sport : tcp->th_dport);
+
+        return;
+    }
 
     /* compute tcp payload (segment) size */
     size_iptotal = ntohs(ip->ip_len);
@@ -518,27 +547,71 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
     payload = (u_char *)(packet + SIZE_ETHERNET + size_ip + size_tcp);
 
     if (payload[0] == TLS_ALERT) {
-        if (size_payload <= OFFSET_ALERT_DESC) { // at least one cipher + compression
-            printf("TLS alert header too short: %d bytes\n", size_payload);
+        /* remove it from tracking table right after saw the alert */
+        /* automatically avoid encrypted close notification (alert 0x0) */
+        conn = ht_remove(Free_List, Inet_HT,
+                ip->ip_src.s_addr, ip->ip_dst.s_addr,
+                tcp->th_sport, tcp->th_dport);
+        if (conn == NULL) {
+            /* Either party may initiate a close by sending an alert. */
+            conn = ht_remove(Free_List, Inet_HT,
+                    ip->ip_dst.s_addr, ip->ip_src.s_addr,
+                    tcp->th_dport, tcp->th_sport);
+        }
+        if (conn == NULL) {
+            /* return since we do not saw the socket before */
             return;
         }
+
+        if (size_payload <= OFFSET_ALERT_DESC) { // at least one cipher + compression
+            fprintf(stderr, "%s:%hu\t%s:%hu\tTLS alert header too short: %d bytes\n",
+                    inet_ntoa(ip->ip_src), ntohs(tcp->th_sport),
+                    inet_ntoa(ip->ip_dst), ntohs(tcp->th_dport),
+                    size_payload);
+            return;
+        }
+
+        printf("%s:%hu\t", inet_ntoa(ip->ip_src), ntohs(tcp->th_sport));
+        printf("%s:%hu\t", inet_ntoa(ip->ip_dst), ntohs(tcp->th_dport));
 
         u_short proto_version = payload[1]*256 + payload[2];
         u_char alert_level = payload[OFFSET_ALERT_LEVEL];
         u_char alert_desc = payload[OFFSET_ALERT_DESC];
-        printf("%s Alert %s %s\n", ssl_version(proto_version), ALERT_LEVEL(alert_level), alert_msg(alert_desc));
+        printf("%s Alert %s %s ",
+                ssl_version(proto_version),
+                ALERT_LEVEL(alert_level),
+                alert_msg(alert_desc)
+                );
+        if (conn->proto_version == SSL2_VERSION) {
+            /* sslv2 */
+            for (cs_id = 0; cs_id < conn->cipher_len; cs_id += 3)
+                print_cipher(
+                        (conn->ciphers[cs_id]<<16)  |
+                        (conn->ciphers[cs_id+1]<<8) |
+                         conn->ciphers[cs_id+2]);
+        } else if (conn->proto_version > SSL2_VERSION) {
+            /* tls */
+            for (cs_id = 0; cs_id < conn->cipher_len; cs_id += 2)
+                print_cipher((conn->ciphers[cs_id]<<8) |
+                        conn->ciphers[cs_id+1]);
+        }
+        printf(":\n");
     } else if (payload[0] == TLS_HANDSHAKE) {
         if (size_payload < OFFSET_CIPHER_LIST + 3) { // at least one cipher + compression
-            printf("TLS handshake header too short: %d bytes\n", size_payload);
+            fprintf(stderr, "%s:%hu\t%s:%hu\tTLS handshake header too short: %d bytes\n",
+                    inet_ntoa(ip->ip_src), ntohs(tcp->th_sport),
+                    inet_ntoa(ip->ip_dst), ntohs(tcp->th_dport),
+                    size_payload);
             return;
         }
 
         u_short proto_version = payload[1]*256 + payload[2];
-        printf("%s ", ssl_version(proto_version));
         u_short hello_version = payload[OFFSET_HELLO_VERSION]*256 + payload[OFFSET_HELLO_VERSION+1];
 
         if (proto_version < SSL_MIN_GOOD_VERSION || proto_version >= SSL_MAX_GOOD_VERSION ||
                 hello_version < SSL_MIN_GOOD_VERSION || hello_version >= SSL_MAX_GOOD_VERSION) {
+            printf("%s:%hu\t", inet_ntoa(ip->ip_src), ntohs(tcp->th_sport));
+            printf("%s:%hu\t", inet_ntoa(ip->ip_dst), ntohs(tcp->th_dport));
             printf("%s bad version(s)\n", ssl_version(hello_version));
             return;
         }
@@ -546,33 +619,52 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
         // skip session ID
         const u_char *cipher_data = &payload[OFFSET_SESSION_LENGTH];
 #ifdef LOG_SESSIONID
-        if (cipher_data[0] != 0) {
+        if (cipher_data[0] != 0 && !Suppress_Success) {
             printf("SID[%hhu] ", cipher_data[0]);
         }
 #endif
         if (size_payload < OFFSET_SESSION_LENGTH + cipher_data[0] + 3) {
+            printf("%s:%hu\t", inet_ntoa(ip->ip_src), ntohs(tcp->th_sport));
+            printf("%s:%hu\t", inet_ntoa(ip->ip_dst), ntohs(tcp->th_dport));
             printf("SessionID too long: %hhu bytes\n", cipher_data[0]);
             return;
         }
-
-
         cipher_data += 1 + cipher_data[0];
+
+        if (!Suppress_Success) {
+            printf("%s:%hu\t", inet_ntoa(ip->ip_src), ntohs(tcp->th_sport));
+            printf("%s:%hu\t", inet_ntoa(ip->ip_dst), ntohs(tcp->th_dport));
+            printf("%s ", ssl_version(proto_version));
+        }
 
         switch (payload[5]) {
             case TLS_CLIENT_HELLO:
-                printf("ClientHello %s ", ssl_version(hello_version));
-                u_short cs_len = cipher_data[0]*256 + cipher_data[1];
+                cs_len = cipher_data[0]*256 + cipher_data[1];
                 cipher_data += 2; // skip cipher suites length
                 // FIXME: check for buffer overruns
-                int cs_id;
-                for (cs_id = 0; cs_id < cs_len/2; cs_id++)
-                    print_cipher((cipher_data[2*cs_id]<<8) | cipher_data[2*cs_id + 1]);
-                printf(":\n");
+                if (!Suppress_Success) {
+                    printf("ClientHello %s ", ssl_version(hello_version));
+                    for (cs_id = 0; cs_id < cs_len/2; cs_id++)
+                        print_cipher((cipher_data[2*cs_id]<<8) | cipher_data[2*cs_id + 1]);
+                    printf(":\n");
+                }
+
+                ht_insert(Free_List, Inet_HT,
+                        ip->ip_src.s_addr, ip->ip_dst.s_addr,
+                        tcp->th_sport, tcp->th_dport,
+                        proto_version, hello_version,
+                        cs_len, cipher_data);
                 break;
             case TLS_SERVER_HELLO:
-                printf("ServerHello %s ", ssl_version(hello_version));
-                print_cipher((cipher_data[0]<<8) | cipher_data[1]);
-                printf(":\n");
+                if (!Suppress_Success) {
+                    printf("ServerHello %s ", ssl_version(hello_version));
+                    print_cipher((cipher_data[0]<<8) | cipher_data[1]);
+                    printf(":\n");
+                }
+
+                ht_remove(Free_List, Inet_HT,
+                        ip->ip_dst.s_addr, ip->ip_src.s_addr,
+                        tcp->th_dport, tcp->th_sport);
                 break;
             default:
                 printf("Not a Hello\n");
@@ -582,44 +674,63 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
     } else if (payload[0] == SSL_HANDSHAKE && (payload[2] == TLS_CLIENT_HELLO)) {
         // SSL 2.0 client hello is supported even though SSL 2.0 is not supported
         if (size_payload <= SSL_OFFSET_CIPHERSPEC_LENGTH + 1) {
-            printf("SSLv2 handshake header too short: %d bytes\n", size_payload);
+            fprintf(stderr, "%s:%hu\t%s:%hu\tSSLv2 handshake header too short: %d bytes\n",
+                    inet_ntoa(ip->ip_src), ntohs(tcp->th_sport),
+                    inet_ntoa(ip->ip_dst), ntohs(tcp->th_dport),
+                    size_payload);
             return;
         }
-
-        printf("%s ", ssl_version(0x002));
+        cs_len = payload[SSL_OFFSET_CIPHERSPEC_LENGTH]*256 + payload[SSL_OFFSET_CIPHERSPEC_LENGTH+1];
+        if (size_payload < SSL_OFFSET_CIPHER_LIST + cs_len) {
+            fprintf(stderr, "%s:%hu\t%s:%hu\tSSLv2 handshake header too short: %d bytes\n",
+                    inet_ntoa(ip->ip_src), ntohs(tcp->th_sport),
+                    inet_ntoa(ip->ip_dst), ntohs(tcp->th_dport),
+                    size_payload);
+            return;
+        }
         u_short hello_version = payload[SSL_OFFSET_HELLO_VERSION]*256 + payload[SSL_OFFSET_HELLO_VERSION+1];
-
         if (hello_version < SSL_MIN_GOOD_VERSION || hello_version >= SSL_MAX_GOOD_VERSION) {
+            printf("%s:%hu\t", inet_ntoa(ip->ip_src), ntohs(tcp->th_sport));
+            printf("%s:%hu\t", inet_ntoa(ip->ip_dst), ntohs(tcp->th_dport));
             printf("%s bad version(s)\n", ssl_version(hello_version));
             return;
         }
-        printf("ClientHello %s ", ssl_version(hello_version));
 
-        u_short cs_len = payload[SSL_OFFSET_CIPHERSPEC_LENGTH]*256 + payload[SSL_OFFSET_CIPHERSPEC_LENGTH+1];
-        if (size_payload < SSL_OFFSET_CIPHER_LIST + cs_len) {
-            printf("SSLv2 handshake header too short: %d bytes\n", size_payload);
-            return;
+        if (!Suppress_Success) {
+            printf("%s:%hu\t", inet_ntoa(ip->ip_src), ntohs(tcp->th_sport));
+            printf("%s:%hu\t", inet_ntoa(ip->ip_dst), ntohs(tcp->th_dport));
+            printf("%s ClientHello %s", ssl_version(0x002), ssl_version(hello_version));
+            for (cs_offset = SSL_OFFSET_CIPHER_LIST; cs_offset < SSL_OFFSET_CIPHER_LIST+cs_len; cs_offset+=3)
+                print_cipher((payload[cs_offset]<<16) | (payload[cs_offset+1]<<8) | payload[cs_offset+2]);
+            printf(":\n");
         }
-        int cs_offset;
-        for (cs_offset = SSL_OFFSET_CIPHER_LIST; cs_offset < SSL_OFFSET_CIPHER_LIST+cs_len; cs_offset+=3)
-            print_cipher((payload[cs_offset]<<16) | (payload[cs_offset+1]<<8) | payload[cs_offset+2]);
-        printf(":\n");
-    } else {
-        printf("Not a TLS handshake: 0x%02hhx\n", payload[0]);
-    }
 
+        ht_insert(Free_List, Inet_HT,
+                ip->ip_src.s_addr, ip->ip_dst.s_addr,
+                tcp->th_sport, tcp->th_dport,
+                0x0002, hello_version,
+                cs_len, payload + SSL_OFFSET_CIPHER_LIST);
+    }
 }
 
 // PCAP has no payload[offset] field, so we need to get the payload offset
 // from the TCP header (offset 12, upper 4 bits, number of 4-byte words):
 #define FILTER_TCPSIZE    "tcp[12]/16*4"
+
 // TLS Handshake starts with a '22' byte, version, length,
 // and then '01'/'02' for client/server hello
 // And TLS Alert starts with a '21' byte, version, length.
-#define FILTER_TLS    "(tcp[" FILTER_TCPSIZE "]=21) or "\
-    "(tcp[" FILTER_TCPSIZE "]=22 and " \
-    "(tcp[" FILTER_TCPSIZE "+5]=1 or tcp[" FILTER_TCPSIZE "+5]=2)) or " \
-    "(tcp[" FILTER_TCPSIZE "]=128 and tcp[" FILTER_TCPSIZE "+2]=1)"
+#define FILTER_CLOSE "(tcp[tcpflags] & (tcp-rst|tcp-fin) != 0)"
+#define FILTER_TLS_ALERT "(tcp[" FILTER_TCPSIZE "]=21)"
+#define FILTER_TLS_HELLO "(tcp[" FILTER_TCPSIZE "]=22 and " \
+    "(tcp[" FILTER_TCPSIZE "+5]=1 or tcp[" FILTER_TCPSIZE "+5]=2))"
+#define FILTER_SSL_HELLO "(tcp[" FILTER_TCPSIZE "]=128 and tcp[" FILTER_TCPSIZE "+2]=1)"
+
+#define FILTER_TLS "( "     \
+    FILTER_CLOSE " or "     \
+    FILTER_TLS_ALERT " or " \
+    FILTER_TLS_HELLO " or " \
+    FILTER_SSL_HELLO " )"
 
 char *filter_https = "tcp port 443 and " FILTER_TLS;
 char *filter_xmpp = "(tcp port 5222 or tcp port 5223 or tcp port 5269) and " FILTER_TLS;
@@ -645,8 +756,9 @@ int main(int argc, char **argv)
 
     u_char batch_mode = 0;
     int opt;
-    while ((opt = getopt(argc, argv, "hbp:f:")) != -1) {
+    while ((opt = getopt(argc, argv, "shbp:f:")) != -1) {
         switch (opt) {
+            case 's': Suppress_Success = 1; break;
             case 'h': Human_Readable = 1; break;
             case 'b': batch_mode = 1; break;
             case 'p':
@@ -682,6 +794,21 @@ int main(int argc, char **argv)
 
     if (!batch_mode) print_app_banner();
 
+    /* Prepare hash table */
+    /* TODO: read size opts from args */
+    Free_List = fl_init(DEFAULT_INIT_SIZE, DEFAULT_MAX_SIZE);
+    if (Free_List == NULL) {
+        fprintf(stderr, "Couldn't init memory pool with size %u\n",
+                DEFAULT_INIT_SIZE);
+        exit(EXIT_FAILURE);
+    }
+    Inet_HT = ht_init(DEFAULT_HASH_TABLE_SIZE);
+    if (Inet_HT == NULL) {
+        fprintf(stderr, "Couldn't init hash table with size %u\n",
+                DEFAULT_HASH_TABLE_SIZE);
+        exit(EXIT_FAILURE);
+    }
+
     /* try to open capture "device" as a file, if it fails */
     /* get network number and mask associated with capture device */
     if (access(dev, R_OK) != -1) {
@@ -700,12 +827,7 @@ int main(int argc, char **argv)
         printf("Filter expression: %s\n", filter_exp);
         printf("\n");
     }
-#ifdef LOG_COUNTER
-    if (!batch_mode) printf("Counter\t");
-#endif
-#ifdef LOG_ADDRESSES
     if (!batch_mode) printf("Source\t\tDestination\t");
-#endif
     if (!batch_mode) printf("Packet content\n");
 
     /* open capture device */

@@ -32,9 +32,6 @@ if you are authorized to sniff the network.
 To compile, simply run `make`. Have a look at the Makefile to tune the output
 parameters (`#define`s). Possible compile-time options:
 
- * `LOG_COUNTER` display a linear packet counter
- * `LOG_ADDRESSES` display IPs
- * `LOG_PORTS` display TCP ports
  * `LOG_SESSIONID` show if packets contain a session ID (it is not actually dumped)
 
 ## Usage
@@ -45,6 +42,11 @@ You can run the tool on a PCAP dump file or directly on a network interface
 ```sh
 ./tls-hello-dump ./stored-log.pcap
 ./tls-hello-dump eth0
+```
+
+You can detect handshake failures:
+```sh
+./tls-hello-dump -s -bh
 ```
 
 You can add a filter to select which protocol to use:
@@ -67,15 +69,15 @@ packets. Never forget to add it!)
 This is an example of the program output:
 
 	tls-hello-dumper - TLS ClientHello/ServerHello Dumper
-	Copyright (c) 2013 Georg Lukas, based on Tcpdump code.
+	Copyright (c) 2013 Georg Lukas, 2016 Wei, based on Tcpdump code.
 	THERE IS ABSOLUTELY NO WARRANTY FOR THIS PROGRAM.
 
 	Device: wlan0
 	Filter expression: tcp port 443 and tcp[32]=22 and (tcp[37]=1 or tcp[37]=2)
 
 	Source          Destination     Packet content
-	192.168.23.42   83.223.75.24    TLSv1 ClientHello TLSv1.2 :C030:C02C:C028:C024:C014:C00A:C022:C021:00A3:009F:006B:006A:0039:0038:0088:0087:C032:C02E:C02A:C026:C00F:C005:009D:003D:0035:0084:C012:C008:C01C:C01B:0016:0013:C00D:C003:000A:C02F:C02B:C027:C023:C013:C009:C01F:C01E:00A2:009E:0067:0040:0033:0032:009A:0099:0045:0044:C031:C02D:C029:C025:C00E:C004:009C:003C:002F:0096:0041:C011:C007:C00C:C002:0005:0004:0015:0012:0009:0014:0011:0008:0006:0003:00FF:
-	83.223.75.24    192.168.23.42   TLSv1 ServerHello TLSv1 cipher 0039
+	192.168.23.42:6689   83.223.75.24:443    TLSv1 ClientHello TLSv1.2 :C030:C02C:C028:C024:C014:C00A:C022:C021:00A3:009F:006B:006A:0039:0038:0088:0087:C032:C02E:C02A:C026:C00F:C005:009D:003D:0035:0084:C012:C008:C01C:C01B:0016:0013:C00D:C003:000A:C02F:C02B:C027:C023:C013:C009:C01F:C01E:00A2:009E:0067:0040:0033:0032:009A:0099:0045:0044:C031:C02D:C029:C025:C00E:C004:009C:003C:002F:0096:0041:C011:C007:C00C:C002:0005:0004:0015:0012:0009:0014:0011:0008:0006:0003:00FF:
+	83.223.75.24:443    192.168.23.42:6689   TLSv1 ServerHello TLSv1 :0039:
 
 Depending on your compile-time options, you might see more or less columns.
 The most interesting one is the last one, "Packet content". It starts with the
@@ -93,7 +95,7 @@ command:
 
 	./tls-hello-dump -h
 	...
-	83.223.75.24    192.168.23.42   TLSv1 ServerHello TLSv1 cipher TLS_DHE_RSA_WITH_AES_256_CBC_SHA
+	83.223.75.24:443    192.168.23.42:11324   TLSv1 ServerHello TLSv1 :TLS_DHE_RSA_WITH_AES_256_CBC_SHA:
 	...
 
 **Beware:** The script will convert any uppercase two-byte hex numbers it
